@@ -28,6 +28,12 @@ unknown_pre2026=""
 image_ids="$(docker image ls -q | sort -u)"
 [ -z "$image_ids" ] && { echo "No local images found."; exit 0; }
 
+container_usage=""
+_cids="$(docker ps -aq 2>/dev/null || true)"
+if [ -n "$_cids" ]; then
+  container_usage="$(docker inspect --format '{{.Image}} {{.State.StartedAt}}' $_cids 2>/dev/null || true)"
+fi
+
 total="$(printf '%s\n' "$image_ids" | wc -l)"
 current=0
 
@@ -40,6 +46,16 @@ for image_id in $image_ids; do
   repo_tags="$(docker image inspect --format '{{range .RepoTags}}{{println .}}{{end}}' "$image_id" 2>/dev/null || true)"
   repo_digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" 2>/dev/null || true)"
   [ -z "$repo_tags" ] && continue
+
+  usage_info="never run"
+  if [ -n "$container_usage" ]; then
+    full_image_id="$(docker image inspect --format '{{.Id}}' "$image_id" 2>/dev/null || true)"
+    _matches="$(printf '%s\n' "$container_usage" | grep "${full_image_id} " | grep -v ' 0001-01-01' || true)"
+    if [ -n "$_matches" ]; then
+      _last_started="$(printf '%s\n' "$_matches" | awk '{print $2}' | sort -r | head -1)"
+      usage_info="last run ${_last_started%%T*}"
+    fi
+  fi
 
   is_harbor=0
   while IFS= read -r repo_tag; do
@@ -96,7 +112,7 @@ for image_id in $image_ids; do
         [ -n "$digest" ] && printf '%s\n' "$known_affected" | grep -Fxq "$digest" && in_affected=1
         [ -n "$found_files" ] && has_files=1
 
-        line="  ${image_name}:${tag}  (${digest:-no digest})  built ${date_short}"
+        line="  ${image_name}:${tag}  (${digest:-no digest})  built ${date_short}  [${usage_info}]"
 
         if [ "$in_good" -eq 1 ]; then
           safe="${safe}${line}
