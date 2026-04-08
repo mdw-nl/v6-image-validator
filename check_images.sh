@@ -81,18 +81,15 @@ for image_id in $image_ids; do
   found_files=""
   cid="$(docker create --network none "$image_id" true 2>/dev/null || true)"
   if [ -n "$cid" ]; then
-    merged="$(docker inspect --format '{{.GraphDriver.Data.MergedDir}}' "$cid" 2>/dev/null || true)"
-    if [ -n "$merged" ]; then
-      for target in $malware_targets; do
-        if [ -f "${merged}${target}" ]; then
-          if [ -n "$found_files" ]; then
-            found_files="${found_files};${target}"
-          else
-            found_files="$target"
-          fi
+    for target in $malware_targets; do
+      if docker cp "$cid:$target" - >/dev/null 2>&1; then
+        if [ -n "$found_files" ]; then
+          found_files="${found_files};${target}"
+        else
+          found_files="$target"
         fi
-      done
-    fi
+      fi
+    done
     docker rm -f "$cid" >/dev/null 2>&1 || true
   fi
 
